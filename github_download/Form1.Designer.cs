@@ -43,8 +43,11 @@ namespace github_download
             // 
             // folderBrowserDialog
             // 
+            string userProfileFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string downloadsFolder = Path.Combine(userProfileFolder, "Downloads");
+
             folderBrowserDialog.RootFolder = Environment.SpecialFolder.MyComputer;
-            folderBrowserDialog.SelectedPath = "C:\\Users\\admin\\Downloads";
+            folderBrowserDialog.SelectedPath = downloadsFolder;
             // 
             // label1
             // 
@@ -61,7 +64,7 @@ namespace github_download
             textBox1.ReadOnly = true;
             textBox1.Size = new Size(259, 23);
             textBox1.TabIndex = 0;
-            textBox1.Text = "C:\\Users\\admin\\Downloads";
+            textBox1.Text = downloadsFolder;
             // 
             // selectDirectoryButton
             // 
@@ -173,48 +176,122 @@ namespace github_download
             {
                 using (WebClient webClient = new WebClient())
                 {
-                    // Configure proxy settings if needed
-                    // Replace "proxyAddress", "proxyPort", "proxyUsername", and "proxyPassword" with your actual proxy information
+                    LogToFile("开始下载文件...");
+
+                    // 配置代理设置（如果需要）
+                    LogToFile("配置代理设置...");
                     WebProxy proxy = new WebProxy("");
                     proxy.Credentials = new NetworkCredential("", "");
                     webClient.Proxy = proxy;
+
+                    // 获取 GitHub 下载 URL
+                    LogToFile("获取 GitHub 下载 URL...");
                     string zipdata = GetGithubDownloadZipUrl(url);
                     JsonDocument jsonDoc = JsonDocument.Parse(zipdata);
-                    // 获取根元素
                     JsonElement root = jsonDoc.RootElement;
                     string downloadPath = root.GetProperty("props").GetProperty("initialPayload").GetProperty("overview").GetProperty("codeButton").GetProperty("local").GetProperty("platformInfo").GetProperty("zipballUrl").GetString();
                     string downloadUrl = "https://github.com" + downloadPath;
-                    // Download the file
+
+                    // 创建保存文件的目录
+                    string directoryPath = Path.GetDirectoryName(savePath);
+                    if (!Directory.Exists(directoryPath))
+                    {
+                        Directory.CreateDirectory(directoryPath);
+                        LogToFile($"创建目录: {directoryPath}");
+                    }
+
+                    // 下载文件
+                    LogToFile($"从以下地址下载文件: {downloadUrl}");
                     webClient.DownloadFile(downloadUrl, Path.Combine(savePath, "downloaded_file.zip"));
+
+                    LogToFile("下载成功！");
                     MessageBox.Show($"下载成功");
                 }
             }
+            catch (WebException ex)
+            {
+                HandleWebException(ex);
+            }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error downloading file: {ex.Message}");
+                LogToFile($"下载文件时出错: {ex.Message}");
+                MessageBox.Show($"下载文件时出错: {ex.Message}");
             }
+        }
+
+        private void HandleWebException(WebException ex)
+        {
+            LogToFile($"WebException: {ex.Message}");
+
+            if (ex.Response is HttpWebResponse response)
+            {
+                LogToFile($"HTTP Status Code: {response.StatusCode}");
+
+                // Handle specific HTTP status codes if needed
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    // Handle 404 Not Found error
+                }
+                else if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    // Handle 401 Unauthorized error
+                }
+                // Add more conditions as needed
+            }
+
+            // Log the entire exception details if necessary
+            LogToFile($"Exception Details: {ex.ToString()}");
         }
 
         private string GetGithubDownloadZipUrl(string urls)
         {
-            string proxyUrl = "";
-            string proxyUsername = "";
-            string proxyPassword = "";
-            string regexPattern = "<script type=\"application/json\" data-target=\"react-partial.embeddedData\">(.*?)</script>";
-
-            // 获取代理请求的 HTML 内容
-            string htmlContent = GetContentWithProxy(urls, proxyUrl, proxyUsername, proxyPassword);
-            if (!string.IsNullOrEmpty(htmlContent))
+            try
             {
-                // 使用正则表达式提取内容
-                string extractedContent = ExtractContentWithRegex(htmlContent, regexPattern);
+                LogToFile("获取 GitHub 下载页面内容...");
+                string proxyUrl = "";
+                string proxyUsername = "";
+                string proxyPassword = "";
+                string regexPattern = "<script type=\"application/json\" data-target=\"react-partial.embeddedData\">(.*?)</script>";
 
-                if (!string.IsNullOrEmpty(extractedContent))
+                // 获取代理请求的 HTML 内容
+                string htmlContent = GetContentWithProxy(urls, proxyUrl, proxyUsername, proxyPassword);
+
+                if (!string.IsNullOrEmpty(htmlContent))
                 {
-                    return extractedContent;
+                    LogToFile("从 HTML 内容中提取 GitHub 下载 URL...");
+                    string extractedContent = ExtractContentWithRegex(htmlContent, regexPattern);
+
+                    if (!string.IsNullOrEmpty(extractedContent))
+                    {
+                        return extractedContent;
+                    }
+                }
+
+                LogToFile("未能获取 GitHub 下载 URL。");
+                return "";
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"获取 GitHub 下载 URL 时出错: {ex.Message}");
+                return "";
+            }
+        }
+
+        private void LogToFile(string logMessage)
+        {
+            try
+            {
+                string logPath = "./text.log";
+                using (StreamWriter sw = File.AppendText(logPath))
+                {
+                    sw.WriteLine($"{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")} - {logMessage}");
                 }
             }
-            return "";
+            catch (Exception ex)
+            {
+                // 处理写入日志文件时的错误
+                Console.WriteLine($"写入日志文件时出错: {ex.Message}");
+            }
         }
 
         static string GetContentWithProxy(string url, string proxyUrl, string proxyUsername, string proxyPassword)
